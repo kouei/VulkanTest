@@ -1,6 +1,4 @@
-#undef NDEBUG
 #define GLFW_INCLUDE_VULKAN
-
 #include <GLFW/glfw3.h>
 
 #include <iostream>
@@ -11,7 +9,7 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-const std::vector<const char*> validationLayers = {
+const std::vector<const char*> validationLayers {
     "VK_LAYER_KHRONOS_validation"
 };
 
@@ -22,7 +20,9 @@ const bool enableValidationLayers = true;
 #endif
 
 class HelloTriangleApplication {
+
 public:
+
     void run() {
         initWindow();
         initVulkan();
@@ -32,13 +32,31 @@ public:
 
 private:
 
+    static const char * getSeverityString(VkDebugUtilsMessageSeverityFlagBitsEXT severity) {
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+            return "Verbose";
+        }
+        else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+            return "Info";
+        }
+        else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+            return "Warning";
+        }
+        else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+            return "Error";
+        }
+        else {
+            return "Unknown Severity String";
+        }
+    }
+
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
         void* pUserData) {
 
-        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+        std::cerr << "[Validation Layer] " << "[Severity] " << getSeverityString(messageSeverity) << " [Message] " << pCallbackData->pMessage << std::endl;
 
         return VK_FALSE;
     }
@@ -68,19 +86,23 @@ private:
         }
     }
 
-    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
-        createInfo = {};
+    VkDebugUtilsMessengerCreateInfoEXT populateDebugMessengerCreateInfo() {
+        VkDebugUtilsMessengerCreateInfoEXT createInfo;
         createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        createInfo.pNext = nullptr;
         createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
         createInfo.pfnUserCallback = debugCallback;
+        createInfo.pUserData = nullptr;
+        return createInfo;
     }
 
     void setupDebugMessenger() {
-        if (!enableValidationLayers) return;
+        if (!enableValidationLayers) {
+            return;
+        }
 
-        VkDebugUtilsMessengerCreateInfoEXT createInfo;
-        populateDebugMessengerCreateInfo(createInfo);
+        VkDebugUtilsMessengerCreateInfoEXT createInfo = populateDebugMessengerCreateInfo();
 
         if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
             throw std::runtime_error("failed to set up debug messenger!");
@@ -101,12 +123,17 @@ private:
         return extensions;
     }
 
-    bool checkValidationLayerSupport() {
+    std::vector<VkLayerProperties> getAllAvailableLayers() {
         uint32_t layerCount;
         vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
         std::vector<VkLayerProperties> availableLayers(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+        return availableLayers;
+    }
+
+    bool checkValidationLayerSupport() {
+        std::vector<VkLayerProperties> availableLayers = getAllAvailableLayers();
 
         for (const char* layerName : validationLayers) {
             bool layerFound = false;
@@ -126,20 +153,25 @@ private:
         return true;
     }
 
-    void showAllVkExtensions() {
+    std::vector<VkExtensionProperties> getAllAvailableExtensions() {
         uint32_t extensionCount = 0;
         vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
 
         std::vector<VkExtensionProperties> extensions(extensionCount);
         vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-        std::cout << "All Vulkan Extensions:" << '\n';
+        return extensions;
+    }
+
+    void showAllVkExtensions() {
+        std::vector<VkExtensionProperties> extensions = getAllAvailableExtensions();
+        std::cout << "[All Vulkan Extensions]" << '\n';
         for (const auto& extension : extensions) {
             std::cout << '\t' << extension.extensionName << '\n';
         }
     }
 
     void showRequiredExtensions(const std::vector<const char*> & extensions) {
-        std::cout << "All Required Extensions:" << '\n';
+        std::cout << "[All Required Extensions]" << '\n';
         for (const char * p : extensions) {
             std::cout << '\t' << p << '\n';
         }
@@ -166,12 +198,12 @@ private:
         createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         createInfo.ppEnabledExtensionNames = extensions.data();
 
-        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
         if (enableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
 
-            populateDebugMessengerCreateInfo(debugCreateInfo);
+            debugCreateInfo = populateDebugMessengerCreateInfo();
             createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
         }
         else {
@@ -208,9 +240,11 @@ private:
     }
 
     void cleanup() {
-        //if (enableValidationLayers) {
-        //    DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        //}
+        // Comment out following lines deliberately to show how validation layer works.
+        // 
+        // if (enableValidationLayers) {
+        //     DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        // }
 
         vkDestroyInstance(instance, nullptr);
 
