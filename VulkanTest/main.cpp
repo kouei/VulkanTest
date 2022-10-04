@@ -65,7 +65,8 @@ private:
         VkInstance instance,
         VkDebugUtilsMessengerEXT debugMessenger,
         const VkAllocationCallbacks* pAllocator) {
-        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+        auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
+
         if (func != nullptr) {
             func(instance, debugMessenger, pAllocator);
         }
@@ -77,7 +78,7 @@ private:
         const VkAllocationCallbacks* pAllocator,
         VkDebugUtilsMessengerEXT* pDebugMessenger) {
 
-        auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+        auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
         if (func != nullptr) {
             return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
         }
@@ -171,11 +172,50 @@ private:
         }
     }
 
-    void showRequiredExtensions(const std::vector<const char*> & extensions) {
+    void showRequiredExtensions() {
+        std::vector<const char*> extensions = getRequiredExtensions();
         std::cout << "[All Required Extensions]" << '\n';
         for (const char * p : extensions) {
             std::cout << '\t' << p << '\n';
         }
+    }
+
+    VkApplicationInfo createApplicationInfo() {
+        VkApplicationInfo appInfo;
+        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pNext = nullptr;
+        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.pEngineName = "No Engine";
+        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.apiVersion = VK_API_VERSION_1_0;
+        return appInfo;
+    }
+
+    VkInstanceCreateInfo createInstanceCreationInfo(
+        VkApplicationInfo * pAppInfo,
+        uint32_t enabledExtensionCount,
+        const char * const * ppEnabledExtensionNames,
+        VkDebugUtilsMessengerCreateInfoEXT * pDebugCreateInfo) {
+
+        VkInstanceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        createInfo.pApplicationInfo = pAppInfo;
+
+        createInfo.enabledExtensionCount = enabledExtensionCount;
+        createInfo.ppEnabledExtensionNames = ppEnabledExtensionNames;
+
+        if (enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+            createInfo.ppEnabledLayerNames = validationLayers.data();
+            createInfo.pNext = pDebugCreateInfo;
+        }
+        else {
+            createInfo.enabledLayerCount = 0;
+            createInfo.pNext = nullptr;
+        }
+
+        return createInfo;
     }
 
     void createInstance() {
@@ -183,41 +223,24 @@ private:
             throw std::runtime_error("validation layers requested, but not available!");
         }
 
-        VkApplicationInfo appInfo{};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Hello Triangle";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "No Engine";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+        VkApplicationInfo appInfo = createApplicationInfo();
+        
+        std::vector<const char *> extensions = getRequiredExtensions();
 
-        VkInstanceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo = &appInfo;
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = populateDebugMessengerCreateInfo();
 
-        auto extensions = getRequiredExtensions();
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-        createInfo.ppEnabledExtensionNames = extensions.data();
-
-        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-        if (enableValidationLayers) {
-            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-            createInfo.ppEnabledLayerNames = validationLayers.data();
-
-            debugCreateInfo = populateDebugMessengerCreateInfo();
-            createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-        }
-        else {
-            createInfo.enabledLayerCount = 0;
-            createInfo.pNext = nullptr;
-        }
+        VkInstanceCreateInfo createInfo = createInstanceCreationInfo(
+            &appInfo,
+            static_cast<uint32_t>(extensions.size()),
+            extensions.data(),
+            &debugCreateInfo);
 
         if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
             throw std::runtime_error("failed to create instance!");
         }
 
         showAllVkExtensions();
-        showRequiredExtensions(extensions);
+        showRequiredExtensions();
     }
 
     void initWindow() {
