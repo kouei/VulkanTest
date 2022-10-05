@@ -13,18 +13,6 @@ using std::endl;
 using std::runtime_error;
 using std::exception;
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
-
-const vector<const char*> validationLayers {
-    "VK_LAYER_KHRONOS_validation"
-};
-
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
 
 class HelloTriangleApplication {
 
@@ -283,6 +271,19 @@ private:
 
         glfwTerminate();
     }
+
+#ifdef NDEBUG
+    static constexpr const bool enableValidationLayers = false;
+#else
+    static constexpr const bool enableValidationLayers = true;
+#endif
+
+    static constexpr const uint32_t WIDTH = 800;
+    static constexpr const uint32_t HEIGHT = 600;
+
+    const vector<const char*> validationLayers{
+        "VK_LAYER_KHRONOS_validation"
+    };
 
     GLFWwindow* window;
     VkInstance instance;
