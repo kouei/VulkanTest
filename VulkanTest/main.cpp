@@ -13,7 +13,6 @@ using std::endl;
 using std::runtime_error;
 using std::exception;
 
-
 class HelloTriangleApplication {
 
 public:
