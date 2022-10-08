@@ -239,6 +239,47 @@ private:
         return devices;
     }
 
+    void createLogicalDevice() {
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+        VkDeviceQueueCreateInfo queueCreateInfo;
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.pNext = nullptr;
+        queueCreateInfo.flags = 0;
+        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+        queueCreateInfo.queueCount = 1;
+
+        float queuePriority = 1.0f;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+
+        VkDeviceCreateInfo createInfo;
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.pNext = nullptr;
+        createInfo.flags = 0;
+        createInfo.queueCreateInfoCount = 1;
+        createInfo.pQueueCreateInfos = &queueCreateInfo;
+        createInfo.enabledLayerCount = 0;
+        createInfo.ppEnabledLayerNames = nullptr;
+        createInfo.enabledExtensionCount = 0;
+        createInfo.ppEnabledExtensionNames = nullptr;
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        // The following code is for backward compatability.
+        // In latest Vulkan implementation, the 2 parameters 'enabledLayerCount' and 'ppEnabledLayerNames' will be ignored.
+        if (enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+            createInfo.ppEnabledLayerNames = validationLayers.data();
+        }
+
+        if (vkCreateDevice(this->physicalDevice, &createInfo, nullptr, &this->device) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create logical device!");
+        }
+
+        vkGetDeviceQueue(this->device, indices.graphicsFamily.value(), 0, &this->graphicsQueue);
+    }
+
     void pickPhysicalDevice() {
         vector<VkPhysicalDevice> devices = getAllAvailableDevices(this->instance);
         for (const auto& device : devices) {
@@ -323,6 +364,7 @@ private:
         this->createInstance();
         this->setupDebugMessenger();
         this->pickPhysicalDevice();
+        this->createLogicalDevice();
     }
 
     void mainLoop() {
@@ -338,10 +380,10 @@ private:
         //     DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         // }
 
-        vkDestroyInstance(instance, nullptr);
+        vkDestroyDevice(this->device, nullptr);
+        vkDestroyInstance(this->instance, nullptr);
 
-        glfwDestroyWindow(window);
-
+        glfwDestroyWindow(this->window);
         glfwTerminate();
     }
 
@@ -362,6 +404,8 @@ private:
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device;
+    VkQueue graphicsQueue;
 };
 
 int main() {
