@@ -230,21 +230,21 @@ private:
                indices.graphicsFamily.has_value();
     }
 
-    vector<VkPhysicalDevice> getAllAvailableDevices() {
+    static vector<VkPhysicalDevice> getAllAvailableDevices(VkInstance instance) {
         uint32_t deviceCount = 0;
-        vkEnumeratePhysicalDevices(this->instance, &deviceCount, nullptr);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
         if (deviceCount == 0) {
             throw std::runtime_error("failed to find GPUs with Vulkan support!");
         }
 
         vector<VkPhysicalDevice> devices(deviceCount);
-        vkEnumeratePhysicalDevices(this->instance, &deviceCount, devices.data());
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
         return devices;
     }
 
     void pickPhysicalDevice() {
-        vector<VkPhysicalDevice> devices = this->getAllAvailableDevices();
+        vector<VkPhysicalDevice> devices = getAllAvailableDevices(this->instance);
         for (const auto& device : devices) {
             if (isDeviceSuitable(device)) {
                 this->physicalDevice = device;
@@ -256,8 +256,8 @@ private:
             throw std::runtime_error("failed to find a suitable GPU!");
         }
 
-        getDeviceProperties(devices[0]);
-        getDeviceFeatures(devices[0]);
+        getDeviceProperties(this->physicalDevice);
+        getDeviceFeatures(this->physicalDevice);
     }
 
     void setupDebugMessenger() {
