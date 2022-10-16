@@ -1,11 +1,15 @@
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
 #include <vector>
 #include <optional>
+#include <unordered_set>
 
 using std::vector;
 using std::cerr;
@@ -14,6 +18,7 @@ using std::endl;
 using std::runtime_error;
 using std::exception;
 using std::optional;
+using std::unordered_set;
 
 class HelloTriangleApplication {
 
@@ -30,6 +35,11 @@ private:
 
     struct QueueFamilyIndices {
         optional<uint32_t> graphicsFamily;
+        optional<uint32_t> presentFamily;
+
+        bool isComplete() const {
+            return this->graphicsFamily.has_value() && this->presentFamily.has_value();
+        }
     };
 
     static const char * getSeverityString(VkDebugUtilsMessageSeverityFlagBitsEXT severity) {
@@ -202,7 +212,7 @@ private:
         return queueFamilies;
     }
 
-    static QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+    static QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
         QueueFamilyIndices indices;
         
         vector<VkQueueFamilyProperties> queueFamilies = getDeviceQueueFamilyProperties(device);
@@ -212,18 +222,27 @@ private:
                 break;
             }
         }
+        // Please note that the presentation queue and the graphics queue can actually be the same queue.
+        for (size_t i = 0; i < queueFamilies.size(); ++i) {
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, static_cast<uint32_t>(i), surface, &presentSupport);
+            if (presentSupport) {
+                indices.presentFamily = static_cast<uint32_t>(i);
+                break;
+            }
+        }
 
         return indices;
     }
 
-    static bool isDeviceSuitable(VkPhysicalDevice device) {
+    static bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
         VkPhysicalDeviceProperties deviceProperties = getDeviceProperties(device);
         VkPhysicalDeviceFeatures deviceFeatures = getDeviceFeatures(device);
-        QueueFamilyIndices indices = findQueueFamilies(device);
+        QueueFamilyIndices indices = findQueueFamilies(device, surface);
 
         return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-               deviceFeatures.geometryShader &&
-               indices.graphicsFamily.has_value();
+                deviceFeatures.geometryShader &&
+                indices.isComplete();
     }
 
     static vector<VkPhysicalDevice> getAllAvailableDevices(VkInstance instance) {
@@ -239,18 +258,44 @@ private:
         return devices;
     }
 
-    void createLogicalDevice() {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    void createSurface() {
 
-        VkDeviceQueueCreateInfo queueCreateInfo;
-        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueCreateInfo.pNext = nullptr;
-        queueCreateInfo.flags = 0;
-        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-        queueCreateInfo.queueCount = 1;
+        // Below is what exactly "glfwCreateWindowSurface()" does
+        
+        /*
+        VkWin32SurfaceCreateInfoKHR createInfo;
+        createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+        createInfo.pNext = nullptr;
+        createInfo.flags = 0;
+        createInfo.hwnd = glfwGetWin32Window(this->window);
+        createInfo.hinstance = GetModuleHandle(nullptr);
+
+        if (vkCreateWin32SurfaceKHR(this->instance, &createInfo, nullptr, &this->surface) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create window surface!");
+        }
+        */
+        
+
+        if (glfwCreateWindowSurface(this->instance, this->window, nullptr, &this->surface) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create window surface!");
+        }
+    }
+
+    void createLogicalDevice() {
+        QueueFamilyIndices indices = findQueueFamilies(this->physicalDevice, this->surface);
+
+        vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        unordered_set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
         float queuePriority = 1.0f;
-        queueCreateInfo.pQueuePriorities = &queuePriority;
+        for (uint32_t queueFamily : uniqueQueueFamilies) {
+            VkDeviceQueueCreateInfo queueCreateInfo{};
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = queueFamily;
+            queueCreateInfo.queueCount = 1;
+            queueCreateInfo.pQueuePriorities = &queuePriority;
+            queueCreateInfos.push_back(queueCreateInfo);
+        }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
 
@@ -258,8 +303,8 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         createInfo.pNext = nullptr;
         createInfo.flags = 0;
-        createInfo.queueCreateInfoCount = 1;
-        createInfo.pQueueCreateInfos = &queueCreateInfo;
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.enabledLayerCount = 0;
         createInfo.ppEnabledLayerNames = nullptr;
         createInfo.enabledExtensionCount = 0;
@@ -269,8 +314,8 @@ private:
         // The following code is for backward compatability.
         // In latest Vulkan implementation, the 2 parameters 'enabledLayerCount' and 'ppEnabledLayerNames' will be ignored.
         if (enableValidationLayers) {
-            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-            createInfo.ppEnabledLayerNames = validationLayers.data();
+            createInfo.enabledLayerCount = static_cast<uint32_t>(this->validationLayers.size());
+            createInfo.ppEnabledLayerNames = this->validationLayers.data();
         }
 
         if (vkCreateDevice(this->physicalDevice, &createInfo, nullptr, &this->device) != VK_SUCCESS) {
@@ -278,12 +323,13 @@ private:
         }
 
         vkGetDeviceQueue(this->device, indices.graphicsFamily.value(), 0, &this->graphicsQueue);
+        vkGetDeviceQueue(this->device, indices.presentFamily.value(), 0, &this->presentQueue);
     }
 
     void pickPhysicalDevice() {
         vector<VkPhysicalDevice> devices = getAllAvailableDevices(this->instance);
         for (const auto& device : devices) {
-            if (isDeviceSuitable(device)) {
+            if (isDeviceSuitable(device, this->surface)) {
                 this->physicalDevice = device;
                 break;
             }
@@ -363,6 +409,7 @@ private:
     void initVulkan() {
         this->createInstance();
         this->setupDebugMessenger();
+        this->createSurface();
         this->pickPhysicalDevice();
         this->createLogicalDevice();
     }
@@ -381,6 +428,7 @@ private:
         // }
 
         vkDestroyDevice(this->device, nullptr);
+        vkDestroySurfaceKHR(this->instance, this->surface, nullptr);
         vkDestroyInstance(this->instance, nullptr);
 
         glfwDestroyWindow(this->window);
@@ -403,9 +451,11 @@ private:
     GLFWwindow* window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
+    VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
     VkQueue graphicsQueue;
+    VkQueue presentQueue;
 };
 
 int main() {
